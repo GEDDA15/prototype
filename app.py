@@ -15,48 +15,78 @@ if "started" not in st.session_state:
 if "maximized" not in st.session_state:
     st.session_state.maximized = False
 
-# --- SIDEBAR INPUTS ---
-st.sidebar.header("Step 1: GPS Coordinates & Destinations")
-
-lat = st.sidebar.number_input("GPS Latitude", value=12.9716, format="%.4f")
-lon = st.sidebar.number_input("GPS Longitude", value=77.5946, format="%.4f")
-
-default_destinations = "MG Road, Indiranagar, Koramangala, Whitefield, Jayanagar, Electronic City, Hebbal"
-destinations_input = st.sidebar.text_area("Enter Order Destinations (comma-separated)", value=default_destinations, height=90)
-
-st.sidebar.header("Step 2: Fleet Configuration")
-num_depots = st.sidebar.number_input("Number of Depots/Hubs", min_value=1, max_value=4, value=2)
-num_vehicles = st.sidebar.number_input("Assign Number of Vehicles", min_value=1, max_value=10, value=3)
-
-st.sidebar.divider()
-
-st.sidebar.header("Step 3: Run Routing Engine")
-if st.sidebar.button("🚀 START ROUTING & MAP GENERATION", type="primary", use_container_width=True):
-    st.session_state.started = True
-    if "google_map_obj" in st.session_state:
-        del st.session_state.google_map_obj
-
-if st.sidebar.button("🔄 Reset / Reconfigure", use_container_width=True):
+# Reset button at top of sidebar
+if st.sidebar.button("🔄 Reset Configuration", use_container_width=True):
     st.session_state.started = False
     if "google_map_obj" in st.session_state:
         del st.session_state.google_map_obj
     st.rerun()
 
+st.sidebar.divider()
+
+# --- STEP 1: GPS & Number of Orders ---
+st.sidebar.header("Step 1: GPS & Number of Orders")
+lat = st.sidebar.number_input("GPS Latitude", value=18.1124, format="%.4f")
+lon = st.sidebar.number_input("GPS Longitude", value=83.4125, format="%.4f")
+
+num_orders = st.sidebar.number_input("Number of Target Orders", min_value=1, max_value=20, value=4)
+
+default_destinations = "Vizianagaram Fort Front Gate, Vizianagaram Clock Tower, Kondakarakam Hill, Jagaram Waterfalls"
+destinations_input = st.sidebar.text_area(f"Enter {num_orders} Order Destinations (comma-separated)", value=default_destinations, height=80)
+
+st.sidebar.divider()
+
+# --- STEP 2: Depot Selection ---
+st.sidebar.header("Step 2: Depot Selection")
+depot_options = ["North Hub Depot", "South Transit Sub-Depot", "East Express Hub", "West Distribution Center"]
+selected_depots = st.sidebar.multiselect(
+    "Select Active Sub-Depots",
+    depot_options,
+    default=["North Hub Depot", "South Transit Sub-Depot"]
+)
+
+st.sidebar.divider()
+
+# --- STEP 3: Vehicle Selection ---
+st.sidebar.header("Step 3: Vehicle Selection")
+vehicle_options = ["Vehicle V1 (Van)", "Vehicle V2 (Truck)", "Vehicle V3 (Bike)", "Vehicle V4 (EV)", "Vehicle V5 (Heavy Loader)"]
+selected_vehicles = st.sidebar.multiselect(
+    "Select Active Fleet Vehicles",
+    vehicle_options,
+    default=["Vehicle V1 (Van)", "Vehicle V2 (Truck)", "Vehicle V3 (Bike)"]
+)
+
+st.sidebar.divider()
+
+# --- RUN BUTTON ---
+if st.sidebar.button("🚀 START ROUTING & MAP GENERATION", type="primary", use_container_width=True):
+    if not selected_vehicles:
+        st.sidebar.error("Please select at least one vehicle.")
+    elif not selected_depots:
+        st.sidebar.error("Please select at least one depot.")
+    else:
+        st.session_state.started = True
+        if "google_map_obj" in st.session_state:
+            del st.session_state.google_map_obj
+        st.rerun()
+
 # --- MAIN DASHBOARD VIEW ---
 if not st.session_state.started:
-    st.info("👈 **Input your GPS coordinates and destinations in the sidebar, then click 'START ROUTING & MAP GENERATION'.**")
+    st.info("👈 **Configure your orders, depots, and vehicles in the sidebar, then click 'START ROUTING & MAP GENERATION'.**")
 else:
-    nodes_data, route_paths, vehicle_routes = solve_shortest_low_traffic_routes(num_depots, num_vehicles, destinations_input, lat, lon)
-    num_orders = len([n for n in nodes_data if n["type"] == "Customer"])
+    nodes_data, route_paths, vehicle_routes = solve_shortest_low_traffic_routes(
+        selected_depots, selected_vehicles, destinations_input, lat, lon
+    )
+    total_orders = len([n for n in nodes_data if n["type"] == "Customer"])
 
-    st.success(f"Google GPS routes calculated successfully from (`{lat:.4f}, {lon:.4f}`) across {num_vehicles} vehicles!")
+    st.success(f"Google GPS routes calculated successfully from (`{lat:.4f}, {lon:.4f}`) across {len(selected_vehicles)} vehicles and {len(selected_depots)} sub-depots!")
 
     # KPI Summary Cards
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Google GPS Source", f"{lat:.4f}, {lon:.4f}")
-    col2.metric("Target Destinations", num_orders)
-    col3.metric("Traffic Condition", "🟢 Low / Clear")
-    col4.metric("Path Optimization", "Google Maps Routing Active")
+    col2.metric("Target Destinations", total_orders)
+    col3.metric("Active Fleet", len(selected_vehicles))
+    col4.metric("Traffic Condition", "🟢 Low / Clear")
 
     st.divider()
 
@@ -69,9 +99,8 @@ else:
             st.session_state.maximized = not st.session_state.maximized
             st.rerun()
 
-    # Build or retrieve cached Google Maps Folium instance (prevents blinking completely)
+    # Build or retrieve cached Google Maps Folium instance
     if "google_map_obj" not in st.session_state:
-        # Initialize map with Google Maps Roadmap Tiles
         m = folium.Map(
             location=[lat, lon],
             zoom_start=13,
@@ -113,7 +142,7 @@ else:
         
         st.session_state.google_map_obj = m
 
-    # Render layout with returned_objects=[] to ensure zero component blinking
+    # Render layout
     if st.session_state.maximized:
         st_folium(st.session_state.google_map_obj, use_container_width=True, height=650, returned_objects=[], key="google_map_max")
         st.divider()
